@@ -57,19 +57,23 @@ jobs:
       - name: 推送到 Worker
         env:
           URL: ${{ secrets.WORKER_PUSH_URL }}
+          URL_SMART: ${{ secrets.WORKER_PUSH_URL_SMART }}
         run: |
           set -euo pipefail
-          if [ -z "${URL:-}" ]; then
-            echo "没配 WORKER_PUSH_URL，跳过推送。凭据在 artifact 里，可手动粘贴。"
-            exit 0
-          fi
-          # 令牌就在地址里，所以只需要这一个 secret
-          CODE=$(curl -s -o /tmp/resp.json -w '%{http_code}' -X POST "$URL" \
-            --data-binary @dist/proton-blob.txt)
-          echo "HTTP $CODE"
-          cat /tmp/resp.json; echo
-          # 404 = 令牌不对（故意不区分"路径不存在"和"没权限"）
-          [ "$CODE" = "200" ] || { echo "推送失败"; exit 1; }
+          # 多推送目标:循环推所有已配置的 URL,没配的自动跳过(订阅服务自取)。
+          SENT=0
+          for U in "${URL:-}" "${URL_SMART:-}"; do
+            [ -n "$U" ] || continue
+            # 令牌就在地址里，所以只需要这一个 secret
+            CODE=$(curl -s -o /tmp/resp.json -w '%{http_code}' -X POST "$U" \
+              --data-binary @dist/proton-blob.txt)
+            echo "→ ${U%%https://*}" >/dev/null; echo "HTTP $CODE ($U)"
+            cat /tmp/resp.json; echo
+            # 404 = 令牌不对（故意不区分"路径不存在"和"没权限"）
+            [ "$CODE" = "200" ] || { echo "推送失败"; exit 1; }
+            SENT=1
+          done
+          [ "$SENT" = "1" ] || { echo "没配任何 WORKER_PUSH_URL，跳过推送。凭据在 artifact 里，可手动粘贴。"; }
 
       - name: 摘要
         if: always()
