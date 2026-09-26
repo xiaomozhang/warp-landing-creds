@@ -44,7 +44,15 @@ jobs:
             echo "加 PROTON_USER（Proton 邮箱）和 PROTON_PASS（密码）"
             exit 1
           fi
-          python3 scripts/gen_proton.py dist
+          # 数据中心 IP 偶发触发登录风控(422)，重试常能换台出口过掉。
+          for i in 1 2 3; do
+            if python3 scripts/gen_proton.py dist; then
+              exit 0
+            fi
+            echo "第 $i 次失败，5 分钟后重试"
+            [ "$i" = 3 ] || sleep 300
+          done
+          exit 1
 
       - name: 推送到 Worker
         env:
