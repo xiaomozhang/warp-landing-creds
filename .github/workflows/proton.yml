@@ -58,11 +58,12 @@ jobs:
         env:
           URL: ${{ secrets.WORKER_PUSH_URL }}
           URL_SMART: ${{ secrets.WORKER_PUSH_URL_SMART }}
+          URL_OUTLOOK: ${{ secrets.WORKER_PUSH_URL_OUTLOOK }}
         run: |
           set -euo pipefail
           # 多推送目标:循环推所有已配置的 URL,没配的自动跳过(订阅服务自取)。
           SENT=0
-          for U in "${URL:-}" "${URL_SMART:-}"; do
+          for U in "${URL:-}" "${URL_SMART:-}" "${URL_OUTLOOK:-}"; do
             [ -n "$U" ] || continue
             # 令牌就在地址里，所以只需要这一个 secret
             CODE=$(curl -s -o /tmp/resp.json -w '%{http_code}' -X POST "$U" \
