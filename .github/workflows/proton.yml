@@ -62,18 +62,27 @@ jobs:
         run: |
           set -euo pipefail
           # 多推送目标:循环推所有已配置的 URL,没配的自动跳过(订阅服务自取)。
-          SENT=0
+          # 单目标失败只告警不中止(curl exit 6 教训,2026-10-03),全失败才判死。
+          SENT=0; FAILED=0
           for U in "${URL:-}" "${URL_SMART:-}" "${URL_OUTLOOK:-}"; do
             [ -n "$U" ] || continue
             # 令牌就在地址里，所以只需要这一个 secret
-            CODE=$(curl -s -o /tmp/resp.json -w '%{http_code}' -X POST "$U" \
-              --data-binary @dist/proton-blob.txt)
+            # curl 网络层失败(如 DNS 6)时 CODE 置 000,别让 set -e 杀脚本
+            CODE=$(curl -s --max-time 30 -o /tmp/resp.json -w '%{http_code}' \
+              -X POST "$U" --data-binary @dist/proton-blob.txt) || CODE=000
             echo "→ ${U%%https://*}" >/dev/null; echo "HTTP $CODE ($U)"
-            cat /tmp/resp.json; echo
+            cat /tmp/resp.json 2>/dev/null || true; echo
             # 404 = 令牌不对（故意不区分"路径不存在"和"没权限"）
-            [ "$CODE" = "200" ] || { echo "推送失败"; exit 1; }
-            SENT=1
+            if [ "$CODE" = "200" ]; then
+              SENT=1
+            else
+              echo "⚠️ 该目标推送失败,继续下一个"; FAILED=1
+            fi
           done
+          if [ "$SENT" != "1" ] && [ "$FAILED" = "1" ]; then
+            echo "所有已配置的推送目标都失败!凭据在 artifact 里,可手动粘贴。"
+            exit 1
+          fi
           [ "$SENT" = "1" ] || { echo "没配任何 WORKER_PUSH_URL，跳过推送。凭据在 artifact 里，可手动粘贴。"; }
 
       - name: 摘要
